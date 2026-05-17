@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/27863545/README.md)
 # ChessGuard
 
 **A lightweight chess safety audit tool for humans and AI agents.**
@@ -255,6 +254,208 @@ A possible agent workflow:
 6. A human or agent chooses the final move.
 
 In this workflow, ChessGuard does not replace the AI model. It gives the model a reliable tactical checkpoint.
+
+---
+
+## Recommended AI Advisor Workflow
+
+ChessGuard is designed to be used as a mechanical checkpoint inside a human + AI or AI-agent chess workflow.
+
+The AI advisor should not simply generate a move and trust its own explanation. Each turn should follow a repeatable audit sequence:
+
+### 1. Update the move record
+
+Record the latest move from the opponent and update the full move history.
+
+The AI should treat the move list as the source of truth. Before evaluating a position, it should rebuild the board from the current PGN-like move text rather than relying on memory.
+
+Example:
+
+```bash
+python chessguard.py board "1. e4 e5 2. Nf3 Nc6 3. c3 Nf6"
+```
+
+The purpose of this step is to confirm:
+
+- the current board state;
+- the side to move;
+- whether either king is in check;
+- material balance;
+- FEN;
+- the coordinate ASCII board.
+
+---
+
+### 2. Read the current position before recommending anything
+
+After ChessGuard prints the current position, the AI should first explain the concrete position:
+
+- whose turn it is;
+- whether the side to move is in check;
+- whether any important piece is currently attacked;
+- whether the opponent has immediate threats;
+- whether the position is tactically quiet or forcing.
+
+The AI should not recommend a move until this board-state check is complete.
+
+---
+
+### 3. Identify candidate moves
+
+The AI should generate a small set of candidate moves before choosing one.
+
+Typical candidate groups:
+
+- forcing moves: checks, captures, direct threats;
+- defensive moves: escaping check, saving attacked pieces, defending key squares;
+- development moves: improving inactive pieces;
+- strategic moves: pawn breaks, central control, king safety, file control;
+- tactical continuations: recaptures, pins, discovered attacks, promotion threats.
+
+For uncertain positions, the AI should use `scan-all` or compare more candidates instead of relying on a single intuition.
+
+Example:
+
+```bash
+python chessguard.py compare "1. e4 e5 2. Nf3 Nc6" "Bb5" "Bc4" "d4" --me white
+```
+
+---
+
+### 4. Audit every serious candidate with ChessGuard
+
+For each serious candidate, ChessGuard should be used to check mechanical safety:
+
+```bash
+python chessguard.py move "<move history>" "<candidate move>"
+```
+
+The AI should verify:
+
+- whether the move is legal;
+- whether the route is blocked for bishops, rooks, or queens;
+- whether the move gives check or checkmate;
+- whether the destination square is geometrically attacked;
+- whether the opponent has a legal capture on the destination square;
+- whether the opponent has mate-in-one after the move;
+- whether the opponent has direct checking moves;
+- whether friendly important pieces become attacked after the move;
+- whether an attacked piece loses its only effective defender;
+- whether defenders are real defenders or only pseudo-defenders blocked by absolute pins.
+
+---
+
+### 5. Distinguish danger from acceptable exchange
+
+A destination square being attacked does not automatically mean a move is bad.
+
+The AI must ask:
+
+- If the piece is captured, do we have a legal recapture?
+- Is the recapturing piece actually able to move, or is it pinned?
+- Is the exchange materially favorable, equal, or losing?
+- Does the exchange improve or damage king safety?
+- Does the move remove the only defender of another important piece?
+
+This is especially important for positions where a move is tactically allowed but strategically risky.
+
+---
+
+### 6. Simulate the opponent's best reply
+
+After choosing a likely best candidate, the AI should imagine the opponent's most forcing replies:
+
+- checks;
+- captures;
+- threats against queen, rooks, bishops, knights, or king;
+- pawn breaks;
+- promotion threats;
+- recaptures;
+- moves that attack the moved piece.
+
+In tactical or endgame positions, the AI should perform at least a simple three-ply logic:
+
+```text
+our candidate move
+        ↓
+opponent's strongest reply
+        ↓
+our planned answer
+```
+
+This prevents the AI from recommending moves that are legal on move one but collapse after an obvious reply.
+
+---
+
+### 7. Validate checkmate claims separately
+
+Any claimed checkmate must be verified square by square.
+
+The AI should confirm:
+
+- the checked king has no legal king move;
+- the checking piece cannot be captured;
+- the checking line cannot be blocked;
+- all escape squares are controlled;
+- the king is not allowed to capture the checking piece;
+- the move is legal and the checking line is not blocked.
+
+A move that gives check is not automatically safe, and a move written with `#` should not be trusted until escape squares are verified.
+
+---
+
+### 8. Produce the final recommendation
+
+Only after the above checks should the AI make a final recommendation.
+
+A good final answer should include:
+
+- the recommended move;
+- whether ChessGuard found it legal;
+- the key safety result;
+- the main opponent reply to watch;
+- the planned response if the opponent chooses the forcing line;
+- a short strategic reason.
+
+The AI should be honest about uncertainty. If ChessGuard reports tactical danger, the AI should either reject the candidate or clearly explain why the danger is acceptable.
+
+---
+
+### 9. Post-move update
+
+After the user plays the recommended move, the move must be added to the move record.
+
+Then the next turn begins again from step 1.
+
+The workflow is cyclical:
+
+```text
+update move history
+        ↓
+rebuild board with ChessGuard
+        ↓
+read current position
+        ↓
+generate candidates
+        ↓
+audit candidates
+        ↓
+simulate opponent reply
+        ↓
+recommend move
+        ↓
+record move
+        ↓
+repeat
+```
+
+---
+
+### Practical Principle
+
+ChessGuard should be used before the AI trusts a move, not after the move has already been justified.
+
+The AI may provide strategic judgment, but legality, route safety, destination-square danger, recapture logic, immediate checks, mate threats, pinned defenders, and defender-loss risks should be mechanically verified whenever possible.
 
 ---
 
